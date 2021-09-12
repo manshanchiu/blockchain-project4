@@ -95,7 +95,7 @@ contract('Flight Surety Tests', async (accounts) => {
   it("(airline) can register an airline using registerAirline() if it is funded", async () => {
     await config.flightSuretyApp.submitAirlineFunds({
       from: config.firstAirline,
-      value: web3.utils.toWei("10", "wei"),
+      value: web3.utils.toWei("10", "ether"),
       nonce: await Web3.eth.getTransactionCount(config.firstAirline),
     });
 
@@ -114,7 +114,7 @@ contract('Flight Surety Tests', async (accounts) => {
   it("(airline) registration of fifth and subsequent airlines requires multi-party consensus of 50% of registered airlines", async () => {
     await config.flightSuretyApp.submitAirlineFunds({
         from: config.firstAirline,
-        value: web3.utils.toWei("10", "wei"),
+        value: web3.utils.toWei("10", "ether"),
     });
     await config.flightSuretyApp.registerAirline(
         accounts[2],
@@ -153,7 +153,7 @@ contract('Flight Surety Tests', async (accounts) => {
     // Fund and vote
     await config.flightSuretyApp.submitAirlineFunds({
         from: accounts[2],
-        value: web3.utils.toWei("10", "wei"),
+        value: web3.utils.toWei("10", "ether"),
         nonce: await Web3.eth.getTransactionCount(accounts[2]),
     });
     await config.flightSuretyApp.registerAirline(accounts[5], {
@@ -161,7 +161,7 @@ contract('Flight Surety Tests', async (accounts) => {
     });
     await config.flightSuretyApp.submitAirlineFunds({
         from: accounts[3],
-        value: web3.utils.toWei("10", "wei"),
+        value: web3.utils.toWei("10", "ether"),
         nonce: await Web3.eth.getTransactionCount(accounts[3]),
     });
     await config.flightSuretyApp.registerAirline(accounts[5], {

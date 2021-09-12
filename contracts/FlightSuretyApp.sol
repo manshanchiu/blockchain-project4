@@ -25,7 +25,7 @@ contract FlightSuretyApp {
     uint8 private constant STATUS_CODE_LATE_TECHNICAL = 40;
     uint8 private constant STATUS_CODE_LATE_OTHER = 50;
 
-    uint256 public constant AIRLINE_FUND_FEE = 10 wei;
+    uint256 public constant AIRLINE_FUND_FEE = 10 ether;
     uint256 public constant MAX_INSUREE = 1 ether;
     // uint256 public constant INSURANCE_PAYOUT_DIVIDEND = 2;
 
