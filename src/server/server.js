@@ -12,7 +12,7 @@ let flightSuretyApp = new web3.eth.Contract(FlightSuretyApp.abi, config.appAddre
 const ORACLE_FEE = Web3.utils.toWei("1", "ether");
 const TEST_ORACLES_COUNT = 20;
 const memoryOracles = [];
-const GAS = 3000000;
+const GAS = 1000000;
 
 web3.eth.getAccounts().then((accounts) => {
   // register 20 oracles
@@ -31,7 +31,7 @@ web3.eth.getAccounts().then((accounts) => {
 
             flightSuretyApp.methods
               .getMyIndexes()
-              .call({ from: oracle, gas: GAS}, (error, response) => {
+              .call({ from: oracle}, (error, response) => {
                 memoryOracles[i].indices = response;
               });
           }
