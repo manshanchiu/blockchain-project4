@@ -1,10 +1,11 @@
-pragma solidity ^0.4.25;
+pragma solidity >=0.4.25;
 
 // It's important to avoid vulnerabilities due to numeric overflow bugs
 // OpenZeppelin's SafeMath library, when used correctly, protects agains such bugs
 // More info: https://www.nccgroup.trust/us/about-us/newsroom-and-events/blog/2018/november/smart-contract-insecurity-bad-arithmetic/
 
 import "../node_modules/openzeppelin-solidity/contracts/math/SafeMath.sol";
+import "./FlightSuretyData.sol";
 
 /************************************************** */
 /* FlightSurety Smart Contract                      */
@@ -24,15 +25,12 @@ contract FlightSuretyApp {
     uint8 private constant STATUS_CODE_LATE_TECHNICAL = 40;
     uint8 private constant STATUS_CODE_LATE_OTHER = 50;
 
-    address private contractOwner;          // Account used to deploy contract
+    uint256 public constant AIRLINE_FUND_FEE = 10 wei;
+    uint256 public constant MAX_INSUREE = 1 ether;
+    // uint256 public constant INSURANCE_PAYOUT_DIVIDEND = 2;
 
-    struct Flight {
-        bool isRegistered;
-        uint8 statusCode;
-        uint256 updatedTimestamp;        
-        address airline;
-    }
-    mapping(bytes32 => Flight) private flights;
+    address private contractOwner;          // Account used to deploy contract
+    FlightSuretyData flightDataContract;
 
  
     /********************************************************************************************/
@@ -50,7 +48,7 @@ contract FlightSuretyApp {
     modifier requireIsOperational() 
     {
          // Modify to call data contract's status
-        require(true, "Contract is currently not operational");  
+        require(flightDataContract.isOperational(), "Contract is currently not operational");  
         _;  // All modifiers require an "_" which indicates where the function body will be added
     }
 
@@ -60,6 +58,23 @@ contract FlightSuretyApp {
     modifier requireContractOwner()
     {
         require(msg.sender == contractOwner, "Caller is not contract owner");
+        _;
+    }
+
+    modifier requireRegisteredAirlines()
+    {
+        require(flightDataContract.isRegisteredAirline(msg.sender), "Caller is not registered airline");
+        _;
+    }
+
+    modifier requireFundedAirlines()
+    {
+        require(flightDataContract.isFundedAirline(msg.sender), "Caller is not funded airline");
+        _;
+    }
+
+    modifier requireNotVotedAirline(address airline){
+        require(!flightDataContract.isVotedAirline(msg.sender,airline), "Already voted to the airline!");
         _;
     }
 
@@ -73,23 +88,17 @@ contract FlightSuretyApp {
     */
     constructor
                                 (
+                                    address dataContract
                                 ) 
                                 public 
     {
         contractOwner = msg.sender;
+        flightDataContract = FlightSuretyData(dataContract);
     }
 
     /********************************************************************************************/
     /*                                       UTILITY FUNCTIONS                                  */
     /********************************************************************************************/
-
-    function isOperational() 
-                            public 
-                            pure 
-                            returns(bool) 
-    {
-        return true;  // Modify to call data contract's status
-    }
 
     /********************************************************************************************/
     /*                                     SMART CONTRACT FUNCTIONS                             */
@@ -100,14 +109,47 @@ contract FlightSuretyApp {
     * @dev Add an airline to the registration queue
     *
     */   
+
     function registerAirline
                             (   
+                                address airline
                             )
                             external
-                            pure
+                            requireRegisteredAirlines
+                            requireFundedAirlines
+                            requireNotVotedAirline(airline)
+                            requireIsOperational
                             returns(bool success, uint256 votes)
     {
-        return (success, 0);
+        uint airlinesCount = flightDataContract.getRegisteredAirlinesCount();
+        if (airlinesCount < 4) {
+            // just register
+            flightDataContract.registerAirline(airline);
+            return (true,1);
+        }
+        // need to vote, default value is 0
+        flightDataContract.voteAirline(msg.sender,airline);
+        uint _votes = flightDataContract.getVotes(airline);
+        // 50% consensus
+        if (_votes >= airlinesCount.div(2)){
+            flightDataContract.registerAirline(airline);
+            return (true, _votes);
+        }
+        // else pending approval
+        return (false,_votes);
+    }
+
+    function submitAirlineFunds
+                            (
+                            )
+                            external
+                            requireRegisteredAirlines
+                            requireIsOperational
+                            payable
+    {
+        require(msg.value >= AIRLINE_FUND_FEE, 'not enough fund');
+        contractOwner.transfer(msg.value);
+        flightDataContract.fundedAirline(msg.sender);
     }
 
 
@@ -117,11 +159,15 @@ contract FlightSuretyApp {
     */  
     function registerFlight
                                 (
+                                    address airline,
+                                    string flight,
+                                    uint256 timestamp
                                 )
                                 external
-                                pure
+                                requireIsOperational
     {
-
+        bytes32 flightKey = getFlightKey(airline,flight,timestamp);
+        flightDataContract.registerFlight(airline, timestamp,flightKey);
     }
     
    /**
@@ -136,8 +182,13 @@ contract FlightSuretyApp {
                                     uint8 statusCode
                                 )
                                 internal
-                                pure
     {
+        bytes32 flightKey = getFlightKey(airline,flight,timestamp);
+        require(flightDataContract.isFlightRegistered(flightKey), "Flight is not registered");
+        if (!flightDataContract.isCredited(flightKey) && (statusCode == STATUS_CODE_LATE_AIRLINE  || statusCode == STATUS_CODE_LATE_OTHER || statusCode == STATUS_CODE_LATE_TECHNICAL)){
+            // airline fault
+            flightDataContract.creditInsurees(flightKey);
+        }
     }
 
 
@@ -162,8 +213,41 @@ contract FlightSuretyApp {
         emit OracleRequest(index, airline, flight, timestamp);
     } 
 
+    /**
+    * @dev Buy insurance for a flight
+    *
+    */   
+    function buy
+                            (    
+                                address airline,
+                                string flight,
+                                uint256 timestamp                          
+                            )
+                            external
+                            requireIsOperational
+                            payable
+    {
+        require(msg.value <= MAX_INSUREE, "you can only buy insurance up to 1 ether");
+        bytes32 flightKey = getFlightKey(airline,flight,timestamp);
+        require(!flightDataContract.isBoughtInsurance(flightKey,msg.sender));
+        flightDataContract.buy(flightKey, msg.sender, msg.value);
+    }
 
-// region ORACLE MANAGEMENT
+    function withdraw
+                            (                            
+                            )
+                            external
+                            requireIsOperational
+                            payable
+    {
+        uint256 credits = flightDataContract.getInsureeCredit(msg.sender);
+        require(credits > 0, "you don't have credit to withdraw");
+        flightDataContract.pay(msg.sender);
+        msg.sender.transfer(credits);
+    }
+
+
+    // region ORACLE MANAGEMENT
 
     // Incremented to add pseudo-randomness at various points
     uint8 private nonce = 0;    
@@ -335,3 +419,4 @@ contract FlightSuretyApp {
 // endregion
 
 }   
+

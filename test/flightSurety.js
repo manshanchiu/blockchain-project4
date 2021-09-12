@@ -1,6 +1,8 @@
 
 var Test = require('../config/testConfig.js');
-var BigNumber = require('bignumber.js');
+var web3 = require("web3");
+
+const Web3 = new web3("http://127.0.0.1:8545/");
 
 contract('Flight Surety Tests', async (accounts) => {
 
@@ -83,12 +85,97 @@ contract('Flight Surety Tests', async (accounts) => {
     catch(e) {
 
     }
-    let result = await config.flightSuretyData.isAirline.call(newAirline); 
+    let airline = await config.flightSuretyData.getAirline.call(newAirline); 
 
     // ASSERT
-    assert.equal(result, false, "Airline should not be able to register another airline if it hasn't provided funding");
+    assert.equal(airline.inited, false, "Airline should not be able to register another airline if it hasn't provided funding");
 
   });
- 
 
+  it("(airline) can register an airline using registerAirline() if it is funded", async () => {
+    await config.flightSuretyApp.submitAirlineFunds({
+      from: config.firstAirline,
+      value: web3.utils.toWei("10", "wei"),
+      nonce: await Web3.eth.getTransactionCount(config.firstAirline),
+    });
+
+    let newAirline = accounts[2];
+
+    try {
+        await config.flightSuretyApp.registerAirline(newAirline, {from: config.firstAirline});
+    }
+    catch(e) {
+
+    }
+    let airline = await config.flightSuretyData.getAirline.call(newAirline); 
+    assert.equal(airline.inited, true, "Airline should be able to register another airline if it has provided funding");
+  });
+
+  it("(airline) registration of fifth and subsequent airlines requires multi-party consensus of 50% of registered airlines", async () => {
+    await config.flightSuretyApp.submitAirlineFunds({
+        from: config.firstAirline,
+        value: web3.utils.toWei("10", "wei"),
+    });
+    await config.flightSuretyApp.registerAirline(
+        accounts[2],
+        {
+          from: config.firstAirline,
+        }
+    );
+    await config.flightSuretyApp.registerAirline(
+        accounts[3],
+        {
+            from: config.firstAirline,
+        }
+    );
+    await config.flightSuretyApp.registerAirline(
+        accounts[4],
+        {
+            from: config.firstAirline,
+        }
+    );
+    await config.flightSuretyApp.registerAirline(
+      accounts[5],
+      {
+        from: config.firstAirline,
+      }
+    );
+    const fifthAirline = await config.flightSuretyData.getAirline.call(
+      accounts[5]
+    );
+
+    assert.equal(
+      fifthAirline.isRegistered,
+      false,
+      "The 5th airline registered should require multi-party consensus"
+    );
+
+    // Fund and vote
+    await config.flightSuretyApp.submitAirlineFunds({
+        from: accounts[2],
+        value: web3.utils.toWei("10", "wei"),
+        nonce: await Web3.eth.getTransactionCount(accounts[2]),
+    });
+    await config.flightSuretyApp.registerAirline(accounts[5], {
+        from: accounts[2]
+    });
+    await config.flightSuretyApp.submitAirlineFunds({
+        from: accounts[3],
+        value: web3.utils.toWei("10", "wei"),
+        nonce: await Web3.eth.getTransactionCount(accounts[3]),
+    });
+    await config.flightSuretyApp.registerAirline(accounts[5], {
+        from: accounts[3]
+    });
+
+    const fifthAirlineOnceVoted = await config.flightSuretyData.getAirline.call(
+      accounts[5]
+    );
+
+    assert.equal(
+      fifthAirlineOnceVoted.isRegistered,
+      true,
+      "The 5th airline registered should require multi-party consensus"
+    );
+  });
 });
